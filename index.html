@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Photo Switcher</title>
+    <style>
+        :root {
+            --btn-bg: rgba(255, 255, 255, 0.9);
+            --btn-active: #007aff;
+            --btn-active-text: #ffffff;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            overflow-x: hidden; 
+            overflow-y: auto;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+        }
+
+        /* Переключатель: обрабатывает и перемещение (скролл), и прозрачность (активность) */
+        .lang-switcher {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            background: var(--btn-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 4px;
+            border-radius: 30px;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            
+            /* Плавный переход для всех состояний */
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+                        opacity 0.4s ease;
+            opacity: 1;
+        }
+
+        /* Состояние 1: Скрыт (уехал вверх при скролле вниз) */
+        .lang-switcher.hidden {
+            transform: translate(-50%, -100px);
+            opacity: 0;
+        }
+
+        /* Состояние 3: Полупрозрачный (когда пользователь замер и читает контент) */
+        .lang-switcher.idle {
+            opacity: 0.25;
+        }
+        
+        /* Возвращаем полную яркость при наведении мышки на полупрозрачный элемент */
+        .lang-switcher.idle:hover {
+            opacity: 1;
+        }
+
+        .flag-btn {
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            color: #333;
+        }
+
+        .flag-btn img {
+            width: 24px;
+            height: auto;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+
+        .flag-btn:hover:not(.selected) {
+            background-color: rgba(0, 0, 0, 0.08);
+        }
+
+        .flag-btn.selected {
+            background-color: var(--btn-active);
+            color: var(--btn-active-text);
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+
+        .photo-container {
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #mainPhoto {
+            width: 100%;
+            height: auto;
+            display: block;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #mainPhoto.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="lang-switcher" id="switcher">
+        <button class="flag-btn" data-lang="ru" title="Русский">
+            <img src="https://flagcdn.com/w40/ru.png" alt="RU" />
+            <span>Русский</span>
+        </button>
+        <button class="flag-btn" data-lang="ro" title="Română">
+            <img src="https://flagcdn.com/w40/ro.png" alt="RO" />
+            <span>Română</span>
+        </button>
+    </div>
+
+    <div class="photo-container">
+        <img id="mainPhoto" src="" alt="Фото" />
+    </div>
+
+    <script>
+        const photos = {
+            ru: { phone: 'RU_mobile.PNG', pc: 'RU_pc.PNG' },
+            ro: { phone: 'RO_mobile.PNG', pc: 'RO_pc.PNG' }
+        };
+
+        const mainPhoto = document.getElementById('mainPhoto');
+        const switcher = document.getElementById('switcher');
+        let currentLang = 'ru';
+        
+        // Логика скролла (Вариант 1)
+        let lastScrollTop = 0;
+        const scrollDelta = 8; 
+
+        // Логика засыпания/таймаута (Вариант 3)
+        let idleTimeout;
+        const idleDelay = 2000; // Время в мс (2 секунды) до засыпания
+
+        function isMobile() {
+            return window.matchMedia("(max-width: 767px)").matches;
+        }
+
+        function updatePhoto() {
+            const device = isMobile() ? 'phone' : 'pc';
+            const nextSrc = photos[currentLang][device];
+
+            if (mainPhoto.getAttribute('src') === nextSrc) return;
+
+            mainPhoto.classList.remove('visible');
+
+            const imgLoader = new Image();
+            imgLoader.src = nextSrc;
+            imgLoader.onload = () => {
+                mainPhoto.src = nextSrc;
+                mainPhoto.classList.add('visible');
+            };
+        }
+
+        function selectLang(lang) {
+            currentLang = lang;
+            document.querySelectorAll('.flag-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.lang === lang);
+            });
+            updatePhoto();
+            resetIdleTimer(); // Сбрасываем таймер при клике
+        }
+
+        // Функция сброса таймера прозрачности
+        function resetIdleTimer() {
+            switcher.classList.remove('idle'); // Делаем ярким
+            clearTimeout(idleTimeout);
+            
+            // Если меню не скрыто скроллом, запускаем таймер засыпания заново
+            if (!switcher.classList.contains('hidden')) {
+                idleTimeout = setTimeout(() => {
+                    switcher.classList.add('idle');
+                }, idleDelay);
+            }
+        }
+
+        // Слушатели кликов по кнопкам
+        document.querySelectorAll('.flag-btn').forEach(btn => {
+            btn.addEventListener('click', () => selectLang(btn.dataset.lang));
+        });
+
+        // Отслеживание скролла + активности пользователя
+        window.addEventListener('scroll', () => {
+            let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            
+            if (Math.abs(lastScrollTop - scrollTop) <= scrollDelta) return;
+            
+            if (scrollTop > lastScrollTop && scrollTop > 80) {
+                // Скролл вниз — убираем совсем
+                switcher.classList.add('hidden');
+            } else {
+                // Скролл вверх — возвращаем
+                switcher.classList.remove('hidden');
+            }
+            
+            lastScrollTop = scrollTop;
+            resetIdleTimer(); // Любой скролл — это активность
+        });
+
+        // Отслеживание движения мыши и тапов (для ПК и мобилок)
+        window.addEventListener('mousemove', resetIdleTimer);
+        window.addEventListener('touchstart', resetIdleTimer);
+
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(updatePhoto, 100);
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            selectLang(currentLang);
+            resetIdleTimer();
+        });
+    </script>
+</body>
+</html>
